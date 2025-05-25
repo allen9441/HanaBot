@@ -13,7 +13,7 @@
 2. install plugins using `nb plugin install` .
 
 3. 新增`.env`檔案，填入OpenAI 相容 API配置及Discord bot配置。
-```json
+```dotenv
 # OpenAI API 配置
 OPENAI_API_KEY="[在這裡填入你的key]"
 OPENAI_API_BASE="[填入反代地址，結尾需加/v1]"
