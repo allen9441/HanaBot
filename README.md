@@ -9,10 +9,10 @@
 ## How to start
 
 1. 執行`pipx install nb-cli`安裝nonebot2腳手架。
-1. generate project using `nb create` .
-2. install plugins using `nb plugin install` .
+2. generate project using `nb create` .
+3. install plugins using `nb plugin install` .
 
-3. 新增`.env`檔案，填入OpenAI 相容 API配置及Discord bot配置。
+4. 新增`.env`檔案，填入OpenAI 相容 API配置及Discord bot配置。
 ```dotenv
 # OpenAI API 配置
 OPENAI_API_KEY="[在這裡填入你的key]"
@@ -23,8 +23,22 @@ OPENAI_MODEL_NAME="[模型名稱]"
 DISCORD_BOTS='[{"token": "[填入Discord Bot的token]",
                 "intent": {"guilds": true, "guild_messages": true,"message_content": true, "presence": true}}]'
 ```
-4. 在Discord Developer Portal中勾選[Presence Intent],[Server Members Intent],[Message Content Intent]。
-5. run your bot using `nb run` .
+5. 在Discord Developer Portal中勾選[Presence Intent],[Server Members Intent],[Message Content Intent]。
+6. 新增`persona.json`在專案根目錄中，作為預設提示詞使用。
+```json
+[
+  {
+    "role": "system", // role 可填入 system/assisstant/user
+    "content": "You are a helpful assisstant, type 'OK' if you recieve the message."
+  },
+  {
+    "role": "assistant",
+    "content": "OK"
+  }
+]
+```
+
+6. run your bot using `nb run` .
 
 ## Documentation
 
