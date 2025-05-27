@@ -38,7 +38,7 @@ DISCORD_BOTS='[{"token": "[填入Discord Bot的token]",
 ]
 ```
 
-6. run your bot using `nb run` .
+7. run your bot using `nb run` .
 
 ## Documentation
 
