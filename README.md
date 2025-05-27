@@ -18,10 +18,10 @@
 OPENAI_API_KEY="[在這裡填入你的key]"
 OPENAI_API_BASE="[填入反代地址，結尾需加/v1]"
 OPENAI_MODEL_NAME="[模型名稱]"
+OPENAI_VISION_ENABLED=False
 
 # Discord Bot 設定
-DISCORD_BOTS='[{"token": "[填入Discord Bot的token]",
-                "intent": {"guilds": true, "guild_messages": true,"message_content": true, "presence": true}}]'
+DISCORD_BOTS='[{"token": "[填入Discord Bot的token]","intent": {"guilds": true, "guild_messages": true,"message_content": true, "presence": true}}]'
 ```
 5. 在Discord Developer Portal中勾選[Presence Intent],[Server Members Intent],[Message Content Intent]。
 6. 新增`persona.json`在專案根目錄中，作為預設提示詞使用。
