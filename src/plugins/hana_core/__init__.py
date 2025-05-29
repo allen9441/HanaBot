@@ -1,10 +1,8 @@
-import nonebot
 import random
-from collections import defaultdict # 方便初始化字典
+from collections import defaultdict
 from nonebot import on_message, logger
 from nonebot.rule import to_me
-from nonebot.adapters.discord import Bot, MessageEvent, Message, MessageSegment
-from nonebot.params import EventMessage
+from nonebot.adapters.discord import Bot, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 from typing import Dict, List, Optional
 
@@ -189,8 +187,8 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
         # 調用 OpenAI API，傳入用戶名、文字內容、圖片 URL、歷史記錄和最大長度
         ai_reply, updated_history = await get_openai_reply(
             username=username,
-            text_content=text_content, # 傳遞原始文本
-            image_url=image_url,       # 傳遞圖片 URL
+            text_content=text_content,
+            image_url=image_url,
             history=current_history,
             max_history_length=MAX_HISTORY_LENGTH
         )
