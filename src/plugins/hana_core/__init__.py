@@ -39,8 +39,7 @@ at_reply_handler = on_message(rule=to_me(), priority=10, block=True)
 
 @at_reply_handler.handle()
 async def handle_at_reply(bot: Bot, event: MessageEvent):
-    # Get text content, strip() might remove mention if it's the only text
-    raw_user_message = event.get_plaintext().strip()
+    raw_user_message = event.get_message()
     image_url: Optional[str] = None
 
     # Use event.attachments directly based on the provided event structure
@@ -74,6 +73,13 @@ async def handle_at_reply(bot: Bot, event: MessageEvent):
 
     current_history = conversation_history[session_id]
 
+    # --- 發送 typing 指示 ---
+    try:
+        await bot.trigger_typing_indicator(channel_id=event.channel_id)
+        logger.debug(f"已為 Channel {session_id} 發送 typing 指示")
+    except Exception as e:
+        logger.warning(f"為 Channel {session_id} 發送 typing 指示時出錯: {e}")
+
     # 調用 API，傳入用戶名、文字內容、圖片 URL、歷史記錄和最大長度
     ai_reply, updated_history = await get_openai_reply(
         username=username,
@@ -88,12 +94,18 @@ async def handle_at_reply(bot: Bot, event: MessageEvent):
         conversation_history[session_id] = updated_history
         # Log update confirmation (using channel_id as session_id)
         logger.debug(f"Channel {session_id} 歷史記錄已更新，長度: {len(updated_history)}")
-
-        # 回覆時也 @ 發送者 (假設 Discord 會自動處理，但實測前未知)
-        # 如果需要明確 @，可以使用 f"{MessageSegment.mention(event.user_id)} {ai_reply}"
-        # 但直接發送通常更好
+        
         # 發送回覆 (如果 get_openai_reply 返回的是錯誤信息，也會在這裡發送)
-        await at_reply_handler.send(MessageSegment.text(ai_reply))
+        try:
+            await at_reply_handler.send(MessageSegment.text(ai_reply), reply_message=event.id)
+            logger.debug(f"已成功回覆 Channel {session_id} 中的消息 {event.id}")
+        except Exception as e:
+            logger.error(f"在 Channel {session_id} 回覆消息 {event.id} 時發生錯誤: {e}")
+            # 如果回覆失敗，嘗試直接發送
+            try:
+                await at_reply_handler.send(MessageSegment.text(f"回覆時出錯，嘗試直接發送：\n{ai_reply}"))
+            except Exception as fallback_e:
+                 logger.error(f"在 Channel {session_id} 直接發送消息也失敗: {fallback_e}")
 
 
 # --- 處理隨機回覆的響應器 ---
@@ -167,6 +179,13 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
         # 獲取當前 channel 的歷史記錄
         current_history = conversation_history[session_id]
 
+        # --- 發送 typing 指示 ---
+        try:
+            await bot.trigger_typing_indicator(channel_id=event.channel_id)
+            logger.debug(f"已為 Channel {session_id} (隨機回覆) 發送 typing 指示")
+        except Exception as e:
+            logger.warning(f"為 Channel {session_id} (隨機回覆) 發送 typing 指示時出錯: {e}")
+
         # 調用 OpenAI API，傳入用戶名、文字內容、圖片 URL、歷史記錄和最大長度
         ai_reply, updated_history = await get_openai_reply(
             username=username,
@@ -181,25 +200,17 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
             conversation_history[session_id] = updated_history
             logger.debug(f"Channel {session_id} 歷史記錄已通過隨機回覆更新，長度: {len(updated_history)}")
 
-            # 檢查返回的是否是錯誤信息
-            if "請求 AI 服務時出錯" in ai_reply or "連接 AI 服務時網路出錯" in ai_reply or "處理 AI 請求時發生了預料外的錯誤" in ai_reply:
-                 logger.warning(f"隨機回覆 API 調用返回錯誤信息: {ai_reply}")
-                 # 即使是錯誤信息，也嘗試發送給用戶
-                 try:
-                     await random_reply_handler.send(MessageSegment.text(ai_reply))
-                 except Exception as e:
-                     logger.error(f"在頻道 {channel_id} 發送隨機回覆錯誤信息失敗: {e}")
-            else:
-                # 發送正常的 AI 回覆
+            # 發送回覆 (如果 get_openai_reply 返回的是錯誤信息，也會在這裡發送)
+            try:
+                await at_reply_handler.send(MessageSegment.text(ai_reply), reply_message=event.id)
+                logger.debug(f"已成功回覆 Channel {session_id} 中的消息 {event.id}")
+            except Exception as e:
+                logger.error(f"在 Channel {session_id} 回覆消息 {event.id} 時發生錯誤: {e}")
+                # 如果回覆失敗，嘗試直接發送
                 try:
-                    await random_reply_handler.send(MessageSegment.text(ai_reply))
-                    logger.info(f"已在頻道 {channel_id} 發送帶有歷史記錄的隨機回覆")
-                except Exception as e:
-                    logger.error(f"在頻道 {channel_id} 發送隨機回覆失敗: {e}")
-        else:
-             # get_openai_reply 在 API Key 未配置時可能返回 None
-             logger.warning(f"隨機回覆 API 調用未返回有效內容 (可能 API Key 未配置)")
-             # 可以選擇在這裡發送一個通用錯誤消息，或者不發送
+                    await at_reply_handler.send(MessageSegment.text(f"回覆時出錯，嘗試直接發送：\n{ai_reply}"))
+                except Exception as fallback_e:
+                    logger.error(f"在 Channel {session_id} 直接發送消息也失敗: {fallback_e}")
 
     else:
         # 如果未達到閾值，仍然將包含用戶名和圖片標記的消息記錄到歷史中

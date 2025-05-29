@@ -13,6 +13,8 @@ OPENAI_API_KEY = getattr(config, "openai_api_key", None)
 OPENAI_API_BASE = getattr(config, "openai_api_base", "https://api.openai.com/v1")
 OPENAI_MODEL_NAME = getattr(config, "openai_model_name", "gpt-3.5-turbo")
 OPENAI_VISION_ENABLED = getattr(config, "openai_vision_enabled", False)
+TEMPERATURE = getattr(config, "temperature", 0.7)
+MAX_TOKENS = getattr(config, "max_tokens", 128000)
 
 if not OPENAI_API_KEY:
     logger.warning("OpenAI API Key 未在配置中設置，對話插件可能無法運作。")
@@ -24,6 +26,7 @@ else:
 # --- Persona Loading ---
 
 _persona_data: Optional[List[Dict[str, str]]] = None
+_persona_post_data: Optional[List[Dict[str, str]]] = None
 
 def load_persona() -> Optional[List[Dict[str, str]]]:
     """
@@ -63,6 +66,46 @@ def load_persona() -> Optional[List[Dict[str, str]]]:
 
 # 在模塊載入時嘗試載入 Persona
 _persona_data = load_persona()
+
+def load_persona_post() -> Optional[List[Dict[str, str]]]:
+    """
+    首次調用時載入 persona_post.json 文件並緩存結果。
+    後續調用直接返回緩存的結果。
+    """
+    global _persona_post_data
+    if _persona_post_data is not None: # 如果已載入，直接返回緩存結果
+        return _persona_post_data
+
+    persona_post_path = Path(__file__).parent.parent.parent.parent / 'persona_post.json'
+    try:
+        if persona_post_path.is_file():
+            with open(persona_post_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list) and all(
+                    isinstance(item, dict) and "role" in item and "content" in item
+                    for item in data
+                ):
+                    _persona_post_data = data
+                    logger.info(f"成功載入附加 Persona (Post): {persona_post_path} ({len(data)} 條消息)")
+                else:
+                    logger.warning(f"附加 Persona (Post) 文件格式不符預期: {persona_post_path}")
+                    _persona_post_data = None # 格式錯誤視為無效
+        else:
+             # 文件不存在是正常情況，設為 None
+             _persona_post_data = None
+             # logger.debug(f"附加 Persona (Post) 文件未找到 (可選): {persona_post_path}")
+
+    except json.JSONDecodeError:
+        logger.exception(f"解析附加 Persona (Post) 文件時發生 JSON 錯誤: {persona_post_path}")
+        _persona_post_data = None
+    except Exception:
+        logger.exception(f"載入附加 Persona (Post) 文件時發生未知錯誤: {persona_post_path}")
+        _persona_post_data = None
+
+    return _persona_post_data
+
+# 在模塊載入時嘗試載入並緩存 Persona Post
+load_persona_post() # 調用一次以觸發載入和緩存
 
 
 # --- OpenAI API Call Logic ---
@@ -121,9 +164,8 @@ async def get_openai_reply(
         except Exception as e:
             logger.exception(f"下載或編碼圖片時發生未知錯誤: {e} - URL: {image_url}")
 
-        # --- Build content based on whether image processing succeeded ---
+        # --- 組合 Base64 訊息，傳回 user content ---
         if base64_image_data:
-            # Vision API format with Base64 data URI
             data_uri = f"data:{mime_type};base64,{base64_image_data}"
             current_user_content = [
                 {"type": "text", "text": f"{username}: {text_content}" if text_content else f"{username} 發送了一張圖片:"},
@@ -146,12 +188,23 @@ async def get_openai_reply(
 
     # --- 組合 Persona, 歷史記錄和當前用戶消息 ---
     messages = []
+
+    # 1. 添加 Persona Data (前置)
     persona_list = load_persona()
     if persona_list:
         messages.extend(persona_list)
 
-    messages.extend(history) # 添加歷史記錄
-    messages.append({"role": "user", "content": current_user_content}) # 添加當前用戶消息
+    # 2. 添加 History
+    messages.extend(history)
+
+    # 3. 添加 Persona Post Data
+    persona_post_list = load_persona_post()
+    if persona_post_list:
+        messages.extend(persona_post_list)
+        logger.debug(f"已附加 {len(persona_post_list)} 條 Persona Post 消息")
+
+    # 4. 添加當前用戶消息
+    messages.append({"role": "user", "content": current_user_content})
 
     # --- 設定 API URL, Headers, Payload ---
     api_url = f"{OPENAI_API_BASE.rstrip('/')}/chat/completions"
@@ -167,9 +220,11 @@ async def get_openai_reply(
     payload = {
         "model": OPENAI_MODEL_NAME,
         "messages": messages,
-        "temperature": 0.7,
+        "temperature": TEMPERATURE,
+        "max_completion_tokens": MAX_TOKENS
     }
 
+    # logger.debug(payload)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(api_url, headers=headers, json=payload, timeout=60.0)
