@@ -129,7 +129,7 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
         return 
 
     channel_id = event.channel_id
-    raw_user_message = event.get_plaintext().strip()
+    raw_user_message = event.get_message()
     image_url: Optional[str] = None
 
     # Use event.attachments directly
@@ -150,7 +150,7 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
 
     # --- The rest of the function proceeds ---
     # 獲取用戶名
-    username = event.member.nick if event.member and event.member.nick else event.author.username
+    username = event.author.global_name
 
     # 準備傳遞給 API 的內容和記錄
     text_content = raw_user_message

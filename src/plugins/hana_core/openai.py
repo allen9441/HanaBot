@@ -25,87 +25,62 @@ else:
 
 # --- Persona Loading ---
 
-_persona_data: Optional[List[Dict[str, str]]] = None
-_persona_post_data: Optional[List[Dict[str, str]]] = None
-
-def load_persona() -> Optional[List[Dict[str, str]]]:
+def _load_and_process_persona(file_path: Path, username: str) -> Optional[List[Dict[str, str]]]:
     """
-    載入 persona.json 文件 (包含多個消息的列表) 並處理可能的錯誤。
+    通用函數：載入指定的 persona JSON 文件，並將 'content' 中的 {{user}} 替換為 username。
     """
-    global _persona_data
-    if _persona_data is not None: # 如果已載入，直接返回
-        return _persona_data
+    if not file_path.is_file():
+        # logger.debug(f"Persona 文件未找到: {file_path}")
+        return None
 
     try:
-        # 使用 pathlib 建立相對於目前檔案的路徑
-        # 注意：路徑是相對於 openai.py 的位置
-        persona_path = Path(__file__).parent.parent.parent.parent / 'persona.json'
-        if not persona_path.is_file():
-            logger.warning(f"Persona 文件未找到: {persona_path}")
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # 驗證格式
+        if not isinstance(data, list) or not all(
+            isinstance(item, dict) and "role" in item and "content" in item
+            for item in data
+        ):
+            logger.warning(f"Persona 文件格式不符預期 (需要是包含 'role' 和 'content' 字典的列表): {file_path}")
             return None
 
-        with open(persona_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # 驗證 persona.json 是否為包含字典的列表，且每個字典都有 'role' 和 'content'
-            if isinstance(data, list) and all(
-                isinstance(item, dict) and "role" in item and "content" in item
-                for item in data
-            ):
-                 _persona_data = data
-                 logger.info(f"成功載入 Persona 列表: {persona_path} ({len(data)} 條消息)")
-                 return _persona_data
-            else:
-                logger.warning(f"Persona 文件格式不符預期 (需要是包含 'role' 和 'content' 字典的列表): {persona_path}")
-                return None
+        # 處理替換
+        processed_data = []
+        for item in data:
+            processed_item = item.copy() # 創建副本以避免修改原始數據（如果需要緩存原始數據）
+            if isinstance(processed_item['content'], str):
+                processed_item['content'] = processed_item['content'].replace('{{user}}', username)
+            processed_data.append(processed_item)
+
+        logger.debug(f"成功載入並處理 Persona: {file_path} (為用戶 {username} 處理了 {len(processed_data)} 條消息)")
+        return processed_data
+
     except json.JSONDecodeError:
-        logger.exception(f"解析 Persona 文件時發生 JSON 錯誤: {persona_path}")
+        logger.exception(f"解析 Persona 文件時發生 JSON 錯誤: {file_path}")
         return None
     except Exception:
-        logger.exception(f"載入 Persona 文件時發生未知錯誤: {persona_path}")
+        logger.exception(f"載入或處理 Persona 文件時發生未知錯誤: {file_path}")
         return None
 
-# 在模塊載入時嘗試載入 Persona
-_persona_data = load_persona()
-
-def load_persona_post() -> Optional[List[Dict[str, str]]]:
+def load_persona(username: str) -> Optional[List[Dict[str, str]]]:
     """
-    首次調用時載入 persona_post.json 文件並緩存結果。
-    後續調用直接返回緩存的結果。
+    載入 persona.json 並替換 {{user}}。
     """
-    global _persona_post_data
-    if _persona_post_data is not None: # 如果已載入，直接返回緩存結果
-        return _persona_post_data
+    persona_path = Path(__file__).parent.parent.parent.parent / 'persona.json'
 
+    if not persona_path.is_file():
+        logger.warning(f"Persona 文件未找到: {persona_path}")
+        return None
+    
+    return _load_and_process_persona(persona_path, username)
+
+def load_persona_post(username: str) -> Optional[List[Dict[str, str]]]:
+    """
+    載入 persona_post.json 並替換 {{user}}。
+    """
     persona_post_path = Path(__file__).parent.parent.parent.parent / 'persona_post.json'
-    try:
-        if persona_post_path.is_file():
-            with open(persona_post_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list) and all(
-                    isinstance(item, dict) and "role" in item and "content" in item
-                    for item in data
-                ):
-                    _persona_post_data = data
-                    logger.info(f"成功載入附加 Persona (Post): {persona_post_path} ({len(data)} 條消息)")
-                else:
-                    logger.warning(f"附加 Persona (Post) 文件格式不符預期: {persona_post_path}")
-                    _persona_post_data = None # 格式錯誤視為無效
-        else:
-             # 文件不存在是正常情況，設為 None
-             _persona_post_data = None
-             # logger.debug(f"附加 Persona (Post) 文件未找到 (可選): {persona_post_path}")
-
-    except json.JSONDecodeError:
-        logger.exception(f"解析附加 Persona (Post) 文件時發生 JSON 錯誤: {persona_post_path}")
-        _persona_post_data = None
-    except Exception:
-        logger.exception(f"載入附加 Persona (Post) 文件時發生未知錯誤: {persona_post_path}")
-        _persona_post_data = None
-
-    return _persona_post_data
-
-# 在模塊載入時嘗試載入並緩存 Persona Post
-load_persona_post() # 調用一次以觸發載入和緩存
+    return _load_and_process_persona(persona_post_path, username)
 
 
 # --- OpenAI API Call Logic ---
@@ -189,19 +164,23 @@ async def get_openai_reply(
     # --- 組合 Persona, 歷史記錄和當前用戶消息 ---
     messages = []
 
-    # 1. 添加 Persona Data (前置)
-    persona_list = load_persona()
+    # 1. 添加 Persona Data (前置)，動態載入並處理
+    persona_list = load_persona(username)
+    # logger.debug(persona_list)
+
     if persona_list:
         messages.extend(persona_list)
 
     # 2. 添加 History
     messages.extend(history)
 
-    # 3. 添加 Persona Post Data
-    persona_post_list = load_persona_post()
+    # 3. 添加 Persona Post Data，動態載入並處理
+    persona_post_list = load_persona_post(username)
+    # logger.debug(persona_post_list)
+
     if persona_post_list:
         messages.extend(persona_post_list)
-        logger.debug(f"已附加 {len(persona_post_list)} 條 Persona Post 消息")
+        logger.debug(f"已附加 {len(persona_post_list)} 條 Persona Post 消息 (為用戶 {username} 處理)")
 
     # 4. 添加當前用戶消息
     messages.append({"role": "user", "content": current_user_content})
