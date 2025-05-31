@@ -1,6 +1,6 @@
 import random
 from collections import defaultdict
-from nonebot import on_message, logger
+from nonebot import on_message, logger, get_driver
 from nonebot.rule import to_me
 from nonebot.adapters.discord import Bot, MessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
@@ -37,6 +37,14 @@ at_reply_handler = on_message(rule=to_me(), priority=10, block=True)
 
 @at_reply_handler.handle()
 async def handle_at_reply(bot: Bot, event: MessageEvent):
+
+    # 檢查頻道 ID 是否在黑名單內
+    channel_id = event.channel_id
+    blackchannel = getattr(get_driver().config, "blackchannels", None)
+    if channel_id in blackchannel:
+        logger.debug(f"消息來自黑名單頻道：{channel_id}，不做出回應。")
+        return
+    
     raw_user_message = event.get_message()
     image_url: Optional[str] = None
 
@@ -59,7 +67,7 @@ async def handle_at_reply(bot: Bot, event: MessageEvent):
 
     # --- The rest of the function should execute now ---
     # 獲取用戶名
-    username = event.author.global_name
+    username = event.author.global_name if event.author.global_name else event.author.username
 
     # 準備傳遞給 API 的內容
     text_content = raw_user_message
@@ -113,22 +121,29 @@ random_reply_handler = on_message(priority=99, block=False)
 
 @random_reply_handler.handle()
 async def handle_random_reply(bot: Bot, event: MessageEvent):
-    # 1. 檢查是否是機器人自己的消息，避免自我觸發和計數
-    if str(event.get_user_id()) == str(bot.self_id):
-         return
 
-    # 2. 檢查是否是 @ 消息，如果是，則由 at_reply_handler 處理，這裡忽略
-    #    使用 event.is_tome() 可以判斷
-    if event.is_tome():
-        return
-
-    # 3. 獲取頻道 ID 和消息內容
+    # 1. 獲取頻道 ID 和消息內容
     #    伺服器頻道和私訊皆使用 channel_id 作為識別符
     if not hasattr(event, 'channel_id') or not event.channel_id:
         # logger.debug("無法獲取 channel_id，跳過隨機回覆計數")
         return 
 
+    # 2. 檢查頻道 ID 是否在黑名單內
     channel_id = event.channel_id
+    blackchannel = getattr(get_driver().config, "blackchannels", None)
+    if channel_id in blackchannel:
+        logger.debug(f"消息來自黑名單頻道：{channel_id}，不做出回應。")
+        return
+    
+    # 3. 檢查是否是機器人自己的消息，避免自我觸發和計數
+    if str(event.get_user_id()) == str(bot.self_id):
+         return
+
+    # 4. 檢查是否是 @ 消息，如果是，則由 at_reply_handler 處理，這裡忽略
+    #    使用 event.is_tome() 可以判斷
+    if event.is_tome():
+        return
+
     raw_user_message = event.get_message()
     image_url: Optional[str] = None
 
@@ -150,7 +165,7 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
 
     # --- The rest of the function proceeds ---
     # 獲取用戶名
-    username = event.author.global_name
+    username = event.author.global_name if event.author.global_name else event.author.username
 
     # 準備傳遞給 API 的內容和記錄
     text_content = raw_user_message
@@ -158,12 +173,12 @@ async def handle_random_reply(bot: Bot, event: MessageEvent):
     # 用於存儲歷史的格式化消息
     history_formatted_message = f"{username}: {log_message_content}" # 包含用戶名和圖片標記
 
-    # 4. 更新計數器
+    # 5. 更新計數器
     counter_data = channel_counters[channel_id]
     counter_data["count"] += 1
     logger.debug(f"頻道 {channel_id} 消息計數: {counter_data['count']}/{counter_data['target']}")
 
-    # 5. 檢查是否達到觸發閾值
+    # 6. 檢查是否達到觸發閾值
     if counter_data["count"] >= counter_data["target"]:
         # 使用 channel_id 作為歷史記錄的 key
         session_id = str(channel_id) # 使用 channel_id

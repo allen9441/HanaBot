@@ -15,6 +15,8 @@ OPENAI_MODEL_NAME = getattr(config, "openai_model_name", "gpt-3.5-turbo")
 OPENAI_VISION_ENABLED = getattr(config, "openai_vision_enabled", False)
 TEMPERATURE = getattr(config, "temperature", 0.7)
 MAX_TOKENS = getattr(config, "max_tokens", 128000)
+PERSONA = getattr(config, "persona", None)
+PERSONA_POST = getattr(config, "persona_post", None)
 
 if not OPENAI_API_KEY:
     logger.warning("OpenAI API Key 未在配置中設置，對話插件可能無法運作。")
@@ -47,11 +49,15 @@ def _load_and_process_persona(file_path: Path, username: str) -> Optional[List[D
 
         # 處理替換
         processed_data = []
-        for item in data:
-            processed_item = item.copy() # 創建副本以避免修改原始數據（如果需要緩存原始數據）
-            if isinstance(processed_item['content'], str):
-                processed_item['content'] = processed_item['content'].replace('{{user}}', username)
-            processed_data.append(processed_item)
+        try:
+            for item in data:
+                processed_item = item.copy() # 創建副本以避免修改原始數據（如果需要緩存原始數據）
+                if isinstance(processed_item['content'], str):
+                    processed_item['content'] = processed_item['content'].replace('{{user}}', username)
+                processed_data.append(processed_item)
+        except Exception as e:
+            print(f"嘗試在 {file_path} 替換 username 時發生錯誤：{e}，回傳替換前的消息。")
+            return data
 
         logger.debug(f"成功載入並處理 Persona: {file_path} (為用戶 {username} 處理了 {len(processed_data)} 條消息)")
         return processed_data
@@ -67,7 +73,7 @@ def load_persona(username: str) -> Optional[List[Dict[str, str]]]:
     """
     載入 persona.json 並替換 {{user}}。
     """
-    persona_path = Path(__file__).parent.parent.parent.parent / 'persona.json'
+    persona_path = Path(__file__).parent.parent.parent.parent / PERSONA
 
     if not persona_path.is_file():
         logger.warning(f"Persona 文件未找到: {persona_path}")
@@ -79,7 +85,7 @@ def load_persona_post(username: str) -> Optional[List[Dict[str, str]]]:
     """
     載入 persona_post.json 並替換 {{user}}。
     """
-    persona_post_path = Path(__file__).parent.parent.parent.parent / 'persona_post.json'
+    persona_post_path = Path(__file__).parent.parent.parent.parent / PERSONA_POST
     return _load_and_process_persona(persona_post_path, username)
 
 
