@@ -26,9 +26,13 @@ DISCORD_BOTS='[{"token": "[填入Discord Bot的token]","intent": {"guilds": true
 # 其他環境參數
 TEMPERATURE=1.15
 MAX_TOKENS=131072
+PERSONA='persona.json'
+PERSONA_POST='persona_post.json'
+BLACKCHANNELS=[123456]
 ```
 5. 在Discord Developer Portal中勾選[Presence Intent],[Server Members Intent],[Message Content Intent]。
-6. 新增`persona.json`在專案根目錄中，作為預設提示詞使用。(可選)：新增`persona_post.json`作為Post History提示詞
+6. 新增`persona.json`在專案根目錄中，作為預設提示詞使用。
+   (可選)：新增`persona_post.json`作為Post History提示詞
 ```json
 [
   {
