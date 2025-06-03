@@ -2,10 +2,6 @@
 
 - 基於Nonebot2構建的Discord AI聊天機器人，使用OpenAI 相容 API。
 
-## 本專案基於CC BY-NC 4.0授權開源，需遵守以下規則
-- 您必須給出適當的署名，提供指向本協議的鏈接，並指明是否（對原作）作了修改。您可以以任何合理方式進行，但不得以任何方式暗示授權人認可您或您的使用。
-- 您不得將本作品用於商業目的，包括但不限於任何形式的商業倒賣、SaaS、API 付費介面、二次銷售、打包出售、收費分發或其他直接或間接獲利行為。
-
 ## How to start
 
 1. 執行`pipx install nb-cli`安裝nonebot2腳手架。
@@ -47,6 +43,8 @@ BLACKCHANNELS=[123456]
 ```
 
 7. run your bot using `nb run` .
+
+## 本專案基於CC BY-NC 4.0授權開源
 
 ## Documentation
 
