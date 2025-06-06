@@ -1,7 +1,9 @@
 import random
 import re
+import sys # 新增 sys 模組
 from collections import defaultdict
-from nonebot import on_message, logger, get_driver
+from nonebot import on_message, logger, get_driver, on_command # 新增 on_command
+from nonebot.permission import Permission # 引入 Permission
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 from nonebot.adapters.discord import Bot, MessageEvent, MessageSegment
@@ -9,7 +11,7 @@ from nonebot.plugin import PluginMetadata
 from typing import Dict, List, Optional
 
 from .openai import get_openai_reply
-from .penalty import check_reply
+from .script import check_reply
 
 #  Plugin info
 __plugin_meta__ = PluginMetadata(
@@ -70,10 +72,39 @@ async def handle_at_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
     # 獲取用戶名
     username = event.author.global_name if event.author.global_name else event.author.username
 
+    # --- 替換@格式 ---
+    processed_message_content = str(raw_user_message) 
+    if hasattr(event, 'mentions') and event.mentions:
+        logger.debug(f"Found {len(event.mentions)} mentions in @ message, attempting replacement.")
+        mention_map = {}
+        for mention in event.mentions:
+            if hasattr(mention, 'id') and (hasattr(mention, 'global_name') or hasattr(mention, 'username')):
+                 mention_id = str(mention.id)
+                 mention_name = mention.global_name if mention.global_name else mention.username
+                 if mention_name:
+                     mention_map[mention_id] = mention_name
+
+        if mention_map:
+            def replace_mention(match):
+                user_id = match.group(1)
+                if user_id in mention_map:
+                    username_mention = mention_map[user_id]
+                    return f"<@{user_id}>({username_mention})"
+                else:
+                    return match.group(0)
+
+            processed_message_content = re.sub(r"<@!?(\d+)>", replace_mention, processed_message_content)
+            logger.debug(f"替換提及後的訊息：'{processed_message_content[:50]}...'")
+        else:
+            logger.debug("提及列表為空。")
+    # else:
+    #     logger.debug("無提及用戶消息或其他未知問題。")
+
     # 準備傳遞給 API 的內容
-    text_content = raw_user_message
+    text_content = processed_message_content
+
     # 格式化用於記錄的消息 (簡單表示)
-    log_message_content = text_content + (" [image]" if image_url else "")
+    log_message_content = str(raw_user_message) + (" [image]" if image_url else "")
 
     session_id = str(event.channel_id)
     logger.info(f"收到 @ 消息, Channel: {session_id}, 用戶: {username} ({event.get_user_id()}), 內容: '{log_message_content}'")
@@ -93,7 +124,8 @@ async def handle_at_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
         text_content=text_content,
         image_url=image_url,
         history=current_history,
-        max_history_length=MAX_HISTORY_LENGTH
+        max_history_length=MAX_HISTORY_LENGTH,
+        channel_id=str(event.channel_id)
     )
 
     if ai_reply:
@@ -102,7 +134,7 @@ async def handle_at_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
         logger.debug(f"Channel {session_id} 歷史記錄已更新，長度: {len(updated_history)}")
 
         # --- 檢查 AI 回覆是否包含 timeout 指令 ---
-        timeout_handled, final_reply = await check_reply(bot, event, ai_reply, matcher) # 接收元組
+        timeout_handled, final_reply = await check_reply(bot, event, ai_reply, matcher)
 
         # --- 確定最終要發送的回覆 ---
         # 如果 timeout 被處理且有清理後的回覆，使用清理後的回覆
@@ -176,11 +208,43 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
     # 獲取用戶名
     username = event.author.global_name if event.author.global_name else event.author.username
 
+    # --- 替換@格式 ---
+    processed_message_content = str(raw_user_message)
+    if hasattr(event, 'mentions') and event.mentions:
+        logger.debug(f"找到 {len(event.mentions)} 個提及對象，嘗試替換。")
+        mention_map = {}
+        for mention in event.mentions:
+            # 確保提及對象有id及username
+            if hasattr(mention, 'id') and (hasattr(mention, 'global_name') or hasattr(mention, 'username')):
+                 mention_id = str(mention.id)
+                 mention_name = mention.global_name if mention.global_name else mention.username
+                 if mention_name:
+                     mention_map[mention_id] = mention_name
+
+        if mention_map:
+            # 使用正則替換
+            def replace_mention(match):
+                user_id = match.group(1)
+                if user_id in mention_map:
+                    username_mention = mention_map[user_id]
+                    return f"<@{user_id}>({username_mention})"
+                else:
+                    return match.group(0)
+
+            # 正則如下
+            processed_message_content = re.sub(r"<@!?(\d+)>", replace_mention, processed_message_content)
+            # logger.debug(f"替換提及後的格式：'{processed_message_content[:50]}...'")
+        # else:
+        #     logger.debug("提及列表中沒有用戶。")
+    # else:
+    #     logger.debug("No mentions found or event structure doesn't support mentions attribute (random reply trigger).")
+
     # 準備傳遞給 API 的內容和記錄
-    text_content = raw_user_message
-    log_message_content = text_content + (" [image]" if image_url else "")
-    # 用於存儲歷史的格式化消息
-    history_formatted_message = f"{username}: {log_message_content}" # 包含用戶名和圖片標記
+    text_content = processed_message_content 
+
+    log_message_content = str(raw_user_message) + (" [image]" if image_url else "")
+
+    history_formatted_message = f"{username}: {processed_message_content}" + (" [image]" if image_url else "") # 包含用戶名和圖片標記 (使用處理後內容)
 
     # 5. 更新計數器
     counter_data = channel_counters[channel_id]
@@ -214,7 +278,8 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
             text_content=text_content,
             image_url=image_url,
             history=current_history,
-            max_history_length=MAX_HISTORY_LENGTH
+            max_history_length=MAX_HISTORY_LENGTH,
+            channel_id=str(event.channel_id)
         )
 
         if ai_reply:
@@ -250,3 +315,39 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
             updated_history = updated_history[-MAX_HISTORY_LENGTH:]
         conversation_history[session_id] = updated_history
         logger.debug(f"Channel {session_id}: 未達閾值，已記錄用戶消息 ({username}): '{log_message_content[:20]}...'，歷史長度: {len(updated_history)}")
+
+
+# --- 檢查是否為擁有者 ---
+SPECIFIC_USER_ID = "473722884573888522" # 您的使用者 ID
+
+async def _is_specific_user(event: MessageEvent) -> bool:
+    """檢查事件觸發者是否為擁有者 ID"""
+    return event.get_user_id() == SPECIFIC_USER_ID
+
+IS_SPECIFIC_USER = Permission(_is_specific_user)
+
+
+# --- !wack 指令：清除當前頻道短期記憶 (僅限擁有者) ---
+wack_handler = on_command("wack", aliases={"清除記憶"}, permission=IS_SPECIFIC_USER, priority=5, block=True)
+
+@wack_handler.handle()
+async def handle_wack(event: MessageEvent, matcher: Matcher):
+    session_id = str(event.channel_id)
+    if session_id in conversation_history:
+        del conversation_history[session_id]
+        logger.info(f"指定用戶 {event.get_user_id()} 在頻道 {session_id} 清除了短期記憶。")
+        await matcher.send("操你媽敲沙小，我腦袋都空了。", reply_message=event.id)
+    else:
+        logger.debug(f"指定用戶 {event.get_user_id()} 嘗試清除頻道 {session_id} 的記憶，但該頻道無歷史記錄。")
+        await matcher.send("腦袋沒東西了啦，敲啥。", reply_message=event.id)
+
+
+# --- !down 指令：關閉 Bot (僅限擁有者) ---
+reset_handler = on_command("down", aliases={"關閉"}, permission=IS_SPECIFIC_USER, priority=5, block=True)
+
+@reset_handler.handle()
+async def handle_reset(event: MessageEvent, matcher: Matcher): # 加入 event 參數以供日誌記錄
+    logger.warning(f"收到指定用戶 {event.get_user_id()} 的指令，準備關閉 Bot...")
+    await matcher.send("小睡一下，等等回來")
+    # 使用 sys.exit() 來觸發退出，依賴外部管理器 (如 pm2, systemd) 重啟
+    sys.exit(0)

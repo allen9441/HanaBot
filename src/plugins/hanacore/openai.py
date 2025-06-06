@@ -3,6 +3,7 @@ import nonebot
 import json
 import base64
 import mimetypes
+import os # 新增 os 模組
 from pathlib import Path
 from nonebot import logger
 from typing import Dict, Any, List, Tuple, Optional, Union
@@ -17,6 +18,8 @@ TEMPERATURE = getattr(config, "temperature", 0.7)
 MAX_TOKENS = getattr(config, "max_tokens", 128000)
 PERSONA = getattr(config, "persona", None)
 PERSONA_POST = getattr(config, "persona_post", None)
+
+# logger.debug(f"前置檔案：{PERSONA} 後置檔案：{PERSONA_POST}")
 
 if not OPENAI_API_KEY:
     logger.warning("OpenAI API Key 未在配置中設置，對話插件可能無法運作。")
@@ -85,8 +88,11 @@ def load_persona_post(username: str) -> Optional[List[Dict[str, str]]]:
     """
     載入 persona_post.json 並替換 {{user}}。
     """
-    persona_post_path = Path(__file__).parent.parent.parent.parent / PERSONA_POST
-    return _load_and_process_persona(persona_post_path, username)
+    try:
+        persona_post_path = Path(__file__).parent.parent.parent.parent / PERSONA_POST
+        return _load_and_process_persona(persona_post_path, username)
+    except:
+        return None
 
 
 # --- OpenAI API Call Logic ---
@@ -95,7 +101,8 @@ async def get_openai_reply(
     text_content: str,
     image_url: Optional[str],
     history: List[Dict[str, str]],
-    max_history_length: int
+    max_history_length: int,
+    channel_id: Optional[str] = None # 新增 channel_id 參數
 ) -> Tuple[Optional[str], List[Dict[str, str]]]:
     """
     調用 OpenAI 相容 API (根據配置決定是否啟用 Vision) 並返回回覆文本和更新後的歷史記錄。
@@ -176,6 +183,35 @@ async def get_openai_reply(
 
     if persona_list:
         messages.extend(persona_list)
+
+    # 1.5. 添加 Memories
+    if channel_id:
+        memories_dir = "memories"
+        memory_file_path = os.path.join(memories_dir, f"{channel_id}.json")
+        if os.path.exists(memory_file_path):
+            try:
+                with open(memory_file_path, 'r', encoding='utf-8') as f:
+                    memory_data = json.load(f)
+                if isinstance(memory_data, list):
+                    formatted_memories = []
+                    for item in memory_data:
+                        # 確保 item 是字典且包含必要鍵
+                        if isinstance(item, dict) and all(k in item for k in ['timestamp', 'user_id', 'content']):
+                             # 格式化記憶為 system message
+                             memory_content = f"Memory : {item['content']}"
+                             formatted_memories.append({"role": "system", "content": memory_content})
+                        else:
+                            logger.warning(f"記憶檔案 {memory_file_path} 中的項目格式不正確: {item}")
+
+                    if formatted_memories:
+                        messages.extend(formatted_memories)
+                        logger.debug(f"成功從 {memory_file_path} 載入並添加了 {len(formatted_memories)} 條記憶。")
+                else:
+                     logger.warning(f"記憶檔案 {memory_file_path} 格式不正確（非列表），已跳過。")
+            except json.JSONDecodeError:
+                logger.error(f"解析記憶檔案 {memory_file_path} 時發生 JSON 錯誤，已跳過。")
+            except Exception as e:
+                logger.exception(f"載入記憶檔案 {memory_file_path} 時發生未知錯誤: {e}")
 
     # 2. 添加 History
     messages.extend(history)
