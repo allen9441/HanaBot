@@ -320,11 +320,14 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
 
 
 # --- 檢查是否為擁有者 ---
-SPECIFIC_USER_ID = getattr(config, "user_id", 0000000000000000000)
+SPECIFIC_USER_ID = str(getattr(config, "user_id", "0"))
+# logger.debug(f"從設定檔讀取的擁有者 ID (SPECIFIC_USER_ID): '{SPECIFIC_USER_ID}' (類型: {type(SPECIFIC_USER_ID)})")
 
 async def _is_specific_user(event: MessageEvent) -> bool:
     """檢查事件觸發者是否為擁有者 ID"""
-    return event.get_user_id() == SPECIFIC_USER_ID
+    event_user_id = str(event.get_user_id())
+    # logger.debug(f"權限檢查: 事件用戶 ID='{event_user_id}' (類型: {type(event_user_id)}), 設定的擁有者 ID='{SPECIFIC_USER_ID}' (類型: {type(SPECIFIC_USER_ID)})")
+    return event_user_id == SPECIFIC_USER_ID
 
 IS_SPECIFIC_USER = Permission(_is_specific_user)
 
