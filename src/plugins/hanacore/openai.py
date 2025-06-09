@@ -3,7 +3,7 @@ import nonebot
 import json
 import base64
 import mimetypes
-import os # 新增 os 模組
+import os
 from pathlib import Path
 from nonebot import logger
 from typing import Dict, Any, List, Tuple, Optional, Union

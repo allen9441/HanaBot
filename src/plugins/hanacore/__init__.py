@@ -1,9 +1,9 @@
 import random
 import re
-import sys # 新增 sys 模組
+import sys
 from collections import defaultdict
-from nonebot import on_message, logger, get_driver, on_command # 新增 on_command
-from nonebot.permission import Permission # 引入 Permission
+from nonebot import on_message, logger, get_driver, on_command
+from nonebot.permission import Permission
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me
 from nonebot.adapters.discord import Bot, MessageEvent, MessageSegment
@@ -12,6 +12,8 @@ from typing import Dict, List, Optional
 
 from .openai import get_openai_reply
 from .script import check_reply
+
+config = get_driver().config
 
 #  Plugin info
 __plugin_meta__ = PluginMetadata(
@@ -44,7 +46,7 @@ async def handle_at_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
 
     # # 檢查頻道 ID 是否在黑名單內
     # channel_id = event.channel_id
-    # blackchannel = getattr(get_driver().config, "blackchannels", None)
+    # blackchannel = getattr(config, "blackchannels", None)
     # if channel_id in blackchannel:
     #     logger.debug(f"消息來自黑名單頻道：{channel_id}，不做出回應。")
     #     return
@@ -173,7 +175,7 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
 
     # 2. 檢查頻道 ID 是否在黑名單內
     channel_id = event.channel_id
-    blackchannel = getattr(get_driver().config, "blackchannels", None)
+    blackchannel = getattr(config, "blackchannels", None)
     if channel_id in blackchannel:
         logger.debug(f"消息來自黑名單頻道：{channel_id}，不做出回應。")
         return
@@ -318,7 +320,7 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
 
 
 # --- 檢查是否為擁有者 ---
-SPECIFIC_USER_ID = "473722884573888522" # 您的使用者 ID
+SPECIFIC_USER_ID = getattr(config, "user_id", 0000000000000000000)
 
 async def _is_specific_user(event: MessageEvent) -> bool:
     """檢查事件觸發者是否為擁有者 ID"""
@@ -343,7 +345,7 @@ async def handle_wack(event: MessageEvent, matcher: Matcher):
 
 
 # --- !down 指令：關閉 Bot (僅限擁有者) ---
-reset_handler = on_command("down", aliases={"關閉"}, permission=IS_SPECIFIC_USER, priority=5, block=True)
+reset_handler = on_command("reset", aliases={"重啟"}, permission=IS_SPECIFIC_USER, priority=5, block=True)
 
 @reset_handler.handle()
 async def handle_reset(event: MessageEvent, matcher: Matcher): # 加入 event 參數以供日誌記錄
