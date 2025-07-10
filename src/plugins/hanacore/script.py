@@ -25,7 +25,8 @@ async def check_reply(
     bot: Bot,
     event: MessageEvent,
     ai_reply: str,
-    matcher: Matcher
+    matcher: Matcher,
+    timeout_on: bool
 ) -> Tuple[bool, Optional[str]]:
     """
     檢查 AI 回覆是否包含指令。
@@ -37,6 +38,7 @@ async def check_reply(
         event: 觸發的 MessageEvent。
         ai_reply: AI 生成的回覆內容。
         matcher: 當前處理事件的 Matcher 實例。
+        timeout_on: 是否執行 Timeout 指令。
 
     Returns:
         Tuple[bool, Optional[str]]: (是否處理了任一指令, 清理後的回覆或 None)
@@ -47,7 +49,7 @@ async def check_reply(
 
     # 1. 檢查並處理 Timeout 指令
     match_timeout = TIMEOUT_PATTERN.search(ai_reply) # 在原始回覆中搜索
-    if match_timeout:
+    if match_timeout and timeout_on:
         try:
             duration_minutes = int(match_timeout.group(1))
             reason_from_ai = match_timeout.group(2).strip()

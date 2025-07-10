@@ -136,7 +136,7 @@ async def handle_at_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
         logger.debug(f"Channel {session_id} 歷史記錄已更新，長度: {len(updated_history)}")
 
         # --- 檢查 AI 回覆是否包含 timeout 指令 ---
-        timeout_handled, final_reply = await check_reply(bot, event, ai_reply, matcher)
+        timeout_handled, final_reply = await check_reply(bot, event, ai_reply, matcher, True)
 
         # --- 確定最終要發送的回覆 ---
         # 如果 timeout 被處理且有清理後的回覆，使用清理後的回覆
@@ -286,25 +286,25 @@ async def handle_random_reply(bot: Bot, event: MessageEvent, matcher: Matcher):
 
         if ai_reply:
             
-            # 去除 timeout(); 部分，但不執行動作
             # logger.debug(f"原訊息：{ai_reply}")
-            cleaned_reply = re.compile(r"timeout\(\s*.*?\s*\);").sub("", ai_reply).strip()
+            timeout_handled, final_reply = await check_reply(bot, event, ai_reply, matcher, False)
+            message_to_send = final_reply if timeout_handled and final_reply is not None else (ai_reply if not timeout_handled else None)
             
-            # History is updated inside get_openai_reply
             conversation_history[session_id] = updated_history
             logger.debug(f"Channel {session_id} 歷史記錄已通過隨機回覆更新，長度: {len(updated_history)}")
 
             # 發送回覆 (如果 get_openai_reply 返回的是錯誤信息，也會在這裡發送)
-            try:
-                await at_reply_handler.send(MessageSegment.text(cleaned_reply), reply_message=event.id)
-                logger.debug(f"已成功回覆 Channel {session_id} 中的消息 {event.id}")
-            except Exception as e:
-                logger.error(f"在 Channel {session_id} 回覆消息 {event.id} 時發生錯誤: {e}")
-                # 如果回覆失敗，嘗試直接發送
+            if message_to_send is not None:
                 try:
-                    await at_reply_handler.send(MessageSegment.text(f"回覆時出錯，嘗試直接發送：\n{cleaned_reply}"))
-                except Exception as fallback_e:
-                    logger.error(f"在 Channel {session_id} 直接發送消息也失敗: {fallback_e}")
+                    await at_reply_handler.send(MessageSegment.text(message_to_send), reply_message=event.id)
+                    logger.debug(f"已成功回覆 Channel {session_id} 中的消息 {event.id}")
+                except Exception as e:
+                    logger.error(f"在 Channel {session_id} 回覆消息 {event.id} 時發生錯誤: {e}")
+                    # 如果回覆失敗，嘗試直接發送
+                    try:
+                        await at_reply_handler.send(MessageSegment.text(f"回覆時出錯，嘗試直接發送：\n{message_to_send}"))
+                    except Exception as fallback_e:
+                        logger.error(f"在 Channel {session_id} 直接發送消息也失敗: {fallback_e}")
 
     else:
         # 如果未達到閾值，仍然將包含用戶名和圖片標記的消息記錄到歷史中

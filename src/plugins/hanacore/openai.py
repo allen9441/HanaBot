@@ -102,7 +102,7 @@ async def get_openai_reply(
     image_url: Optional[str],
     history: List[Dict[str, str]],
     max_history_length: int,
-    channel_id: Optional[str] = None # 新增 channel_id 參數
+    channel_id: Optional[str] = None
 ) -> Tuple[Optional[str], List[Dict[str, str]]]:
     """
     調用 OpenAI 相容 API (根據配置決定是否啟用 Vision) 並返回回覆文本和更新後的歷史記錄。
@@ -246,7 +246,7 @@ async def get_openai_reply(
         "top_p": 0.98
     }
 
-    # logger.debug(payload)
+    #logger.debug(payload)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(api_url, headers=headers, json=payload, timeout=60.0)
