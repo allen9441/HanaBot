@@ -87,7 +87,7 @@ async def check_reply(
 
     # 2. 檢查並處理 Memory 指令
     match_memory = MEMORY_PATTERN.search(ai_reply) # 在原始回覆中搜索
-    if match_memory:
+    while match_memory:
         try:
             memory_content = match_memory.group(1).strip()
             logger.info(f"檢測到 AI 回覆中的 memory 指令，內容: '{memory_content[:10]}...'")
@@ -96,10 +96,15 @@ async def check_reply(
                 logger.info("Memory 指令處理成功。")
             else:
                 logger.error("Memory 指令處理失敗。")
-            processed_memory = True # 無論成功失敗，都標記為已處理
+            cleaned_reply = cleaned_reply.replace(match_memory.group(0), "", 1).strip()
+            logger.debug(f"清理 memory 指令後的回覆: '{cleaned_reply}'")
+            match_memory = MEMORY_PATTERN.search(cleaned_reply)
+            processed_memory = True
         except Exception as e:
-            logger.exception(f"處理 AI 觸發的 memory 指令時發生未知錯誤")
-            processed_memory = True # 未知錯誤也標記處理，以便清理
+            logger.exception(f"處理 AI 觸發的 memory 指令時發生未知錯誤:{e}")
+            cleaned_reply = cleaned_reply.replace(match_memory.group(0), "", 1).strip()
+            logger.debug(f"清理 memory 指令後的回覆: '{cleaned_reply}'")
+            processed_memory
 
     # 3. 清理回覆
     # 注意：清理時要基於上一步清理後的結果，而不是原始 ai_reply
@@ -108,11 +113,6 @@ async def check_reply(
         # 只替換第一個匹配項
         cleaned_reply = cleaned_reply.replace(match_timeout.group(0), "", 1).strip()
         logger.debug(f"清理 timeout 指令後的回覆: '{cleaned_reply}'")
-    if processed_memory:
-        # 使用 match_memory.group(0) 獲換完整的匹配字串進行替換
-        # 只替換第一個匹配項
-        cleaned_reply = cleaned_reply.replace(match_memory.group(0), "", 1).strip()
-        logger.debug(f"清理 memory 指令後的回覆: '{cleaned_reply}'")
 
     # 4. 返回結果
     processed_any = processed_timeout or processed_memory
