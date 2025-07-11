@@ -1,6 +1,7 @@
 import random
 import re
-import sys
+import sys, os
+import json
 from collections import defaultdict
 from nonebot import on_message, logger, get_driver, on_command
 from nonebot.permission import Permission
@@ -356,3 +357,57 @@ async def handle_reset(event: MessageEvent, matcher: Matcher): # 加入 event �
     await matcher.send("小睡一下，等等回來")
     # 使用 sys.exit() 來觸發退出，依賴外部管理器 (如 pm2, systemd) 重啟
     sys.exit(0)
+
+
+# --- !memory 指令：輸出當前頻道的記憶內容 ---
+memory_handler = on_command("memory", priority=5, block=True)
+
+@memory_handler.handle()
+async def handle_memory(event: MessageEvent, matcher: Matcher):
+    channel_id = getattr(event, 'channel_id', None)
+    logger.info(f"收到用戶 {event.author.global_name if event.author.global_name else event.author.username} 的調用記憶請求，嘗試調用 {channel_id} 的記憶。")
+
+    if not channel_id:
+        logger.warning("無法獲取 channel_id，無法處理 memory 指令。")
+        await matcher.send("無法確定當前頻道，無法查詢記憶。", reply_message=event.id)
+        return
+
+    memories_dir = "memories"
+    memory_file_path = os.path.join(memories_dir, f"{channel_id}.json")
+
+    if not os.path.exists(memory_file_path):
+        logger.info(f"頻道 {channel_id} 記憶不存在。")
+        await matcher.send("不存在任何記憶。", reply_message=event.id)
+        return
+
+    try:
+        with open(memory_file_path, 'r', encoding='utf-8') as f:
+            memory_data = json.load(f)
+    except json.JSONDecodeError:
+        logger.error(f"解析記憶檔案 {memory_file_path} 時發生 JSON 錯誤。")
+        await matcher.send("解析記憶檔案時發生 JSON 錯誤。", reply_message=event.id)
+        return
+    except Exception as e:
+        logger.exception(f"載入記憶檔案 {memory_file_path} 時發生未知錯誤: {e}")
+        await matcher.send(f"載入記憶檔案時發生未知錯誤: {e}", reply_message=event.id)
+        return
+
+    if not isinstance(memory_data, list):
+        logger.warning(f"記憶檔案 {memory_file_path} 格式不正確（非列表）。")
+        await matcher.send("記憶格式不正確，請檢查檔案。", reply_message=event.id)
+        return
+
+    formatted_memories = []
+    for i, item in enumerate(memory_data):
+        if isinstance(item, dict) and 'content' in item:
+            formatted_memories.append(f"{i + 1}. {item['content']}")
+        else:
+            logger.warning(f"記憶檔案 {memory_file_path} 中的項目格式不正確: {item}")
+
+    if formatted_memories:
+        logger.debug(f"成功從 {memory_file_path} 讀取並格式化 {len(formatted_memories)} 條記憶。")
+        message_to_send = "\n".join(formatted_memories)
+        await matcher.send(message_to_send, reply_message=event.id)
+    else:
+        logger.info(f"記憶檔案 {memory_file_path} 為空或不包含有效項目。")
+        await matcher.send("不存在任何有效記憶。", reply_message=event.id)
